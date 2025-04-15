@@ -4,6 +4,8 @@ import Image from "next/image";
 import { useState, useEffect, useRef } from "react";
 import { apiService, Question, SqlWithVariablesResponse } from "../services/api";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import Cookies from 'js-cookie';
 
 // 定义响应类型
 interface QueryResponse {
@@ -72,6 +74,8 @@ export default function Home() {
   const [recentQuestions, setRecentQuestions] = useState<string[]>([]);
   const [showRecentQuestions, setShowRecentQuestions] = useState(false);
   const [conversationHistory, setConversationHistory] = useState<ConversationItem[]>([]);
+  const [userRole, setUserRole] = useState<'admin' | 'employee' | null>(null);
+  const router = useRouter();
   
   // SQL变量相关状态
   const [sqlVariables, setSqlVariables] = useState<SqlVariable[]>([]);
@@ -82,6 +86,24 @@ export default function Home() {
   const resultRef = useRef<HTMLDivElement>(null);
   const scrollToResults = () => {
     resultRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  // 检查登录状态
+  useEffect(() => {
+    const role = Cookies.get('userRole');
+    if (!role) {
+      router.push('/login');
+    } else {
+      setUserRole(role as 'admin' | 'employee');
+    }
+  }, [router]);
+
+  // 处理登出
+  const handleLogout = () => {
+    // 清除 cookie
+    Cookies.remove('userRole');
+    // 强制刷新页面，这样中间件会自动重定向到登录页
+    window.location.href = '/login';
   };
 
   // 添加最近的问题到历史记录
@@ -216,22 +238,25 @@ export default function Home() {
     }
   };
 
-  // 处理保存训练数据
+  // 修改保存训练数据的处理函数
   const handleSaveTraining = async () => {
     if (!currentResponse?.question || !currentResponse?.sql) return;
     
     setIsSaving(true);
     try {
-      await apiService.addSqlTraining({
+      // 提交审核请求而不是直接保存
+      await apiService.submitSqlForReview({
         question: currentResponse.question,
-        sql: currentResponse.sql
+        sql: currentResponse.sql,
+        result: currentResponse.result,
+        explanation: currentResponse.explanation
       });
       setShowSavePrompt(false);
       // 显示成功提示
-      alert("训练数据保存成功！");
+      alert("已提交审核，等待管理员审核通过后将保存为训练数据");
     } catch (error) {
-      console.error('保存训练数据失败:', error);
-      alert("保存失败，请重试");
+      console.error('提交审核失败:', error);
+      alert("提交失败，请重试");
     } finally {
       setIsSaving(false);
     }
@@ -872,16 +897,18 @@ export default function Home() {
         {/* 侧边栏 */}
         <aside className="w-64 border-r border-gray-200 flex flex-col">
           <div className="p-4">
-            <Link 
-              href="/training" 
-              prefetch={true}
-              className="flex items-center p-2 rounded hover:bg-gray-100 cursor-pointer"
-            >
-              <svg className="w-5 h-5 mr-2 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-              </svg>
-              <span>训练数据</span>
-            </Link>
+            {userRole === 'admin' && (
+              <Link 
+                href="/training" 
+                prefetch={true}
+                className="flex items-center p-2 rounded hover:bg-gray-100 cursor-pointer"
+              >
+                <svg className="w-5 h-5 mr-2 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                </svg>
+                <span>训练数据管理</span>
+              </Link>
+            )}
             <div 
               className="flex items-center p-2 rounded hover:bg-gray-100 cursor-pointer mt-2"
               onClick={() => { setShowHistory(!showHistory); fetchQuestionHistory(); }}
@@ -902,15 +929,39 @@ export default function Home() {
             </div>
           </div>
           <div className="mt-auto p-4 border-t border-gray-200">
-            <div className="flex items-center">
-              <div className="w-3 h-3 bg-green-500 rounded-full mr-2"></div>
-              <span className="text-sm text-green-500">已连接</span>
-            </div>
-            <div className="flex items-center mt-4 cursor-pointer">
-              <span className="text-gray-600">退出登录</span>
-              <svg className="w-5 h-5 ml-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
-              </svg>
+            <div className="flex flex-col space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center">
+                  <div className="w-3 h-3 bg-green-500 rounded-full mr-2"></div>
+                  <span className="text-sm text-green-500">已连接</span>
+                </div>
+              </div>
+              
+              <div className="flex items-center justify-between">
+                <div className="flex items-center">
+                  <svg className="w-5 h-5 text-gray-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                  </svg>
+                  <div className="flex flex-col">
+                    <span className="text-sm font-medium text-gray-700">
+                      {userRole === 'admin' ? '管理员' : '普通员工'}
+                    </span>
+                    <span className="text-xs text-gray-500">
+                      {userRole === 'admin' ? 'admin' : '员工用户'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <button 
+                onClick={handleLogout}
+                className="flex items-center justify-center space-x-2 w-full px-4 py-2 text-sm text-red-600 bg-red-50 rounded-md hover:bg-red-100 transition-colors duration-200"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                </svg>
+                <span>退出登录</span>
+              </button>
             </div>
           </div>
         </aside>
@@ -1096,13 +1147,13 @@ export default function Home() {
 
               {currentResponse && (
                 <div className="space-y-4" ref={resultRef}>
-                  {/* 保存训练数据提示 */}
+                  {/* 修改保存训练数据提示 */}
                   {showSavePrompt && (
                     <div className="bg-blue-50 p-4 rounded-lg mb-4">
                       <div className="flex justify-between items-center">
                         <div>
-                          <h3 className="font-medium text-blue-700">保存查询</h3>
-                          <p className="text-blue-600 text-sm mt-1">是否将此次查询保存为训练数据？这将帮助系统提供更好的查询建议。</p>
+                          <h3 className="font-medium text-blue-700">提交审核</h3>
+                          <p className="text-blue-600 text-sm mt-1">是否将此次查询提交审核？通过审核后将保存为训练数据，这将帮助系统提供更好的查询建议。</p>
                         </div>
                         <div className="flex space-x-2">
                           <button
@@ -1118,7 +1169,7 @@ export default function Home() {
                               isSaving ? 'opacity-50 cursor-not-allowed' : ''
                             }`}
                           >
-                            {isSaving ? '保存中...' : '保存'}
+                            {isSaving ? '提交中...' : '提交审核'}
                           </button>
                         </div>
                       </div>

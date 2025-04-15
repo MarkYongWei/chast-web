@@ -9,6 +9,10 @@ import Image from "next/image";
 // @ts-ignore
 import ImportTrainingModal from "./ImportTrainingModal";
 import * as XLSX from 'xlsx';
+import { useRouter } from "next/navigation";
+import Cookies from 'js-cookie';
+// 导入SqlReviewPanel组件
+import SqlReviewPanel from "./SqlReviewPanel";
 
 interface TrainingData {
   id: string;
@@ -21,6 +25,16 @@ interface TrainingData {
   ddl?: string;
   documentation?: string;
   solution?: string;
+}
+
+interface SqlReview {
+  id: string;
+  question: string;
+  sql: string;
+  result: any;
+  explanation?: string;
+  timestamp: string;
+  status: 'pending' | 'approved' | 'rejected';
 }
 
 type DataType = "all" | "sql" | "ddl" | "documentation" | "solution";
@@ -40,6 +54,8 @@ export default function TrainingDataPage() {
   const [expandedAnswer, setExpandedAnswer] = useState<string | null>(null);
   const exportButtonRef = useRef<HTMLDivElement>(null);
   const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [userRole, setUserRole] = useState<'admin' | 'employee' | null>(null);
+  const router = useRouter();
   
   // 搜索相关状态
   const [searchTerm, setSearchTerm] = useState("");
@@ -49,6 +65,32 @@ export default function TrainingDataPage() {
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  // SQL审核相关状态
+  const [showReviewTab, setShowReviewTab] = useState(false);
+  const [pendingReviews, setPendingReviews] = useState<SqlReview[]>([]);
+  const [isLoadingReviews, setIsLoadingReviews] = useState(false);
+
+  // 检查登录状态
+  useEffect(() => {
+    const role = Cookies.get('userRole');
+    if (!role) {
+      router.push('/login');
+    } else if (role === 'employee') {
+      // 如果是普通员工，重定向到首页
+      router.push('/');
+    } else {
+      setUserRole(role as 'admin' | 'employee');
+    }
+  }, [router]);
+
+  // 处理登出
+  const handleLogout = () => {
+    // 清除 cookie
+    Cookies.remove('userRole');
+    // 强制刷新页面，这样中间件会自动重定向到登录页
+    window.location.href = '/login';
+  };
 
   // 加载训练数据
   const loadTrainingData = async () => {
@@ -597,438 +639,485 @@ export default function TrainingDataPage() {
             <Link 
               href="/training" 
               prefetch={true}
-              className="flex items-center p-2 rounded bg-gray-100 cursor-pointer"
+              className={`flex items-center p-2 rounded cursor-pointer ${!showReviewTab ? 'bg-gray-100' : 'hover:bg-gray-100'}`}
+              onClick={() => setShowReviewTab(false)}
             >
-              <svg className="w-5 h-5 mr-2 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <svg className="w-5 h-5 mr-2 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
               </svg>
-              <span>训练数据</span>
+              <span>训练数据管理</span>
             </Link>
+
+            {userRole === 'admin' && (
+              <div 
+                className={`flex items-center p-2 rounded cursor-pointer mt-2 ${showReviewTab ? 'bg-gray-100' : 'hover:bg-gray-100'}`}
+                onClick={() => setShowReviewTab(true)}
+              >
+                <svg className="w-5 h-5 mr-2 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                </svg>
+                <span>SQL审核</span>
+                {pendingReviews.filter(r => r.status === 'pending').length > 0 && (
+                  <span className="ml-2 bg-red-500 text-white text-xs px-2 py-1 rounded-full">
+                    {pendingReviews.filter(r => r.status === 'pending').length}
+                  </span>
+                )}
+              </div>
+            )}
+
             <Link 
               href="/"
               className="flex items-center p-2 rounded hover:bg-gray-100 cursor-pointer mt-2"
             >
-              <svg className="w-5 h-5 mr-2 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+              <svg className="w-5 h-5 mr-2 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
               </svg>
-              <span>新建问题</span>
+              <span>返回首页</span>
             </Link>
           </div>
           <div className="mt-auto p-4 border-t border-gray-200">
-            <div className="flex items-center">
-              <div className="w-3 h-3 bg-green-500 rounded-full mr-2"></div>
-              <span className="text-sm text-green-500">已连接</span>
-            </div>
-            <div className="flex items-center mt-4 cursor-pointer">
-              <span className="text-gray-600">退出登录</span>
-              <svg className="w-5 h-5 ml-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
-              </svg>
+            <div className="flex flex-col space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center">
+                  <div className="w-3 h-3 bg-green-500 rounded-full mr-2"></div>
+                  <span className="text-sm text-green-500">已连接</span>
+                </div>
+              </div>
+              
+              <div className="flex items-center justify-between">
+                <div className="flex items-center">
+                  <svg className="w-5 h-5 text-gray-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                  </svg>
+                  <div className="flex flex-col">
+                    <span className="text-sm font-medium text-gray-700">
+                      {userRole === 'admin' ? '管理员' : '普通员工'}
+                    </span>
+                    <span className="text-xs text-gray-500">
+                      {userRole === 'admin' ? 'admin' : '员工用户'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <button 
+                onClick={handleLogout}
+                className="flex items-center justify-center space-x-2 w-full px-4 py-2 text-sm text-red-600 bg-red-50 rounded-md hover:bg-red-100 transition-colors duration-200"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                </svg>
+                <span>退出登录</span>
+              </button>
             </div>
           </div>
         </aside>
 
         {/* 主要内容区域 */}
         <main className="flex-1 overflow-y-auto p-6">
-          <div className="container mx-auto">
-            <div className="bg-white rounded-lg shadow-sm p-6">
-              <div className="flex items-center justify-between mb-8">
-                <div>
-                  <h1 className="text-2xl font-bold text-gray-800">训练数据</h1>
-                  <p className="text-gray-600 mt-1">添加或删除训练数据。良好的训练数据是准确性的关键。</p>
-                </div>
-                <div className="flex space-x-4">
-                  <Link href="/" className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">
-                    返回首页
-                  </Link>
-                  <div className="relative" ref={exportButtonRef}>
+          {showReviewTab ? (
+            <SqlReviewPanel />
+          ) : (
+            <div className="container mx-auto">
+              <div className="bg-white rounded-lg shadow-sm p-6">
+                <div className="flex items-center justify-between mb-8">
+                  <div>
+                    <h1 className="text-2xl font-bold text-gray-800">训练数据</h1>
+                    <p className="text-gray-600 mt-1">添加或删除训练数据。良好的训练数据是准确性的关键。</p>
+                  </div>
+                  <div className="flex space-x-4">
+                    <Link href="/" className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">
+                      返回首页
+                    </Link>
+                    <div className="relative" ref={exportButtonRef}>
+                      <button
+                        onClick={toggleExportOptions}
+                        disabled={isExporting || searchFilteredData.length === 0}
+                        className={`px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 flex items-center ${(isExporting || searchFilteredData.length === 0) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      >
+                        <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7l4-4m0 0l4 4m-4-4v18" />
+                        </svg>
+                        {isExporting ? '导出中...' : '批量导出'}
+                        <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </button>
+                      
+                      {showExportOptions && (
+                        <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg z-10 border border-gray-200">
+                          <div className="py-1">
+                            <button
+                              onClick={() => handleExportData('json')}
+                              className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center"
+                            >
+                              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                              </svg>
+                              导出为JSON
+                            </button>
+                            <button
+                              onClick={() => handleExportData('excel')}
+                              className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center"
+                            >
+                              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                              </svg>
+                              导出为Excel
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                     <button
-                      onClick={toggleExportOptions}
-                      disabled={isExporting || searchFilteredData.length === 0}
-                      className={`px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 flex items-center ${(isExporting || searchFilteredData.length === 0) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      onClick={() => setShowImportModal(true)}
+                      className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 flex items-center"
                     >
                       <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7l4-4m0 0l4 4m-4-4v18" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10" />
                       </svg>
-                      {isExporting ? '导出中...' : '批量导出'}
-                      <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                      </svg>
+                      批量导入
                     </button>
-                    
-                    {showExportOptions && (
-                      <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg z-10 border border-gray-200">
-                        <div className="py-1">
-                          <button
-                            onClick={() => handleExportData('json')}
-                            className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center"
-                          >
-                            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                            </svg>
-                            导出为JSON
-                          </button>
-                          <button
-                            onClick={() => handleExportData('excel')}
-                            className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center"
-                          >
-                            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                            </svg>
-                            导出为Excel
-                          </button>
-                        </div>
-                      </div>
+                    <button
+                      onClick={() => setShowAddModal(true)}
+                      className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 flex items-center"
+                    >
+                      <span className="mr-1">+</span> 添加训练数据
+                    </button>
+                  </div>
+                </div>
+
+                {/* 分类筛选 */}
+                <div className="mb-6">
+                  <div className="flex space-x-2">
+                    <button
+                      onClick={() => handleTypeChange("all")}
+                      className={`px-4 py-2 rounded-md ${
+                        selectedType === "all" 
+                          ? "bg-blue-500 text-white" 
+                          : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                      }`}
+                    >
+                      全部
+                    </button>
+                    <button
+                      onClick={() => handleTypeChange("sql")}
+                      className={`px-4 py-2 rounded-md ${
+                        selectedType === "sql" 
+                          ? "bg-blue-500 text-white" 
+                          : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                      }`}
+                    >
+                      SQL
+                    </button>
+                    <button
+                      onClick={() => handleTypeChange("ddl")}
+                      className={`px-4 py-2 rounded-md ${
+                        selectedType === "ddl" 
+                          ? "bg-blue-500 text-white" 
+                          : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                      }`}
+                    >
+                      DDL
+                    </button>
+                    <button
+                      onClick={() => handleTypeChange("documentation")}
+                      className={`px-4 py-2 rounded-md ${
+                        selectedType === "documentation" 
+                          ? "bg-blue-500 text-white" 
+                          : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                      }`}
+                    >
+                      文档
+                    </button>
+                    <button
+                      onClick={() => handleTypeChange("solution")}
+                      className={`px-4 py-2 rounded-md ${
+                        selectedType === "solution" 
+                          ? "bg-blue-500 text-white" 
+                          : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                      }`}
+                    >
+                      解题步骤
+                    </button>
+                  </div>
+                </div>
+
+                {/* 搜索框 */}
+                <div className="mb-6 flex items-center space-x-2">
+                  <div className="relative flex-grow">
+                    <input
+                      type="text"
+                      value={searchTerm}
+                      onChange={handleSearchChange}
+                      placeholder="搜索训练数据..."
+                      className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    {searchTerm && (
+                      <button
+                        onClick={clearSearch}
+                        className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
                     )}
                   </div>
-                  <button
-                    onClick={() => setShowImportModal(true)}
-                    className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 flex items-center"
+                  <select
+                    value={searchField}
+                    onChange={handleSearchFieldChange}
+                    className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
-                    <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10" />
-                    </svg>
-                    批量导入
-                  </button>
-                  <button
-                    onClick={() => setShowAddModal(true)}
-                    className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 flex items-center"
-                  >
-                    <span className="mr-1">+</span> 添加训练数据
-                  </button>
+                    <option value="all">全部字段</option>
+                    <option value="question">问题</option>
+                    <option value="content">内容</option>
+                  </select>
+                  <div className="text-sm text-gray-500">
+                    {searchTerm && `找到 ${searchFilteredData.length} 条结果`}
+                  </div>
                 </div>
-              </div>
 
-              {/* 分类筛选 */}
-              <div className="mb-6">
-                <div className="flex space-x-2">
-                  <button
-                    onClick={() => handleTypeChange("all")}
-                    className={`px-4 py-2 rounded-md ${
-                      selectedType === "all" 
-                        ? "bg-blue-500 text-white" 
-                        : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                    }`}
-                  >
-                    全部
-                  </button>
-                  <button
-                    onClick={() => handleTypeChange("sql")}
-                    className={`px-4 py-2 rounded-md ${
-                      selectedType === "sql" 
-                        ? "bg-blue-500 text-white" 
-                        : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                    }`}
-                  >
-                    SQL
-                  </button>
-                  <button
-                    onClick={() => handleTypeChange("ddl")}
-                    className={`px-4 py-2 rounded-md ${
-                      selectedType === "ddl" 
-                        ? "bg-blue-500 text-white" 
-                        : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                    }`}
-                  >
-                    DDL
-                  </button>
-                  <button
-                    onClick={() => handleTypeChange("documentation")}
-                    className={`px-4 py-2 rounded-md ${
-                      selectedType === "documentation" 
-                        ? "bg-blue-500 text-white" 
-                        : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                    }`}
-                  >
-                    文档
-                  </button>
-                  <button
-                    onClick={() => handleTypeChange("solution")}
-                    className={`px-4 py-2 rounded-md ${
-                      selectedType === "solution" 
-                        ? "bg-blue-500 text-white" 
-                        : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                    }`}
-                  >
-                    解题步骤
-                  </button>
+                {/* 批量操作区域 */}
+                <div className="flex justify-between items-center mb-4">
+                  <div className="flex items-center">
+                    {selectedItems.length > 0 && (
+                      <button
+                        onClick={() => setShowDeleteConfirm(true)}
+                        className="flex items-center px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                        disabled={isDeleting}
+                      >
+                        <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                        {isDeleting ? "删除中..." : `批量删除(${selectedItems.length})`}
+                      </button>
+                    )}
+                  </div>
+                  <div className="text-sm text-gray-500">
+                    {selectedItems.length > 0
+                      ? `已选择 ${selectedItems.length} 项`
+                      : "可选择多项进行批量操作"}
+                  </div>
                 </div>
-              </div>
 
-              {/* 搜索框 */}
-              <div className="mb-6 flex items-center space-x-2">
-                <div className="relative flex-grow">
-                  <input
-                    type="text"
-                    value={searchTerm}
-                    onChange={handleSearchChange}
-                    placeholder="搜索训练数据..."
-                    className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                  {searchTerm && (
-                    <button
-                      onClick={clearSearch}
-                      className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700"
-                    >
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </button>
-                  )}
-                </div>
-                <select
-                  value={searchField}
-                  onChange={handleSearchFieldChange}
-                  className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="all">全部字段</option>
-                  <option value="question">问题</option>
-                  <option value="content">内容</option>
-                </select>
-                <div className="text-sm text-gray-500">
-                  {searchTerm && `找到 ${searchFilteredData.length} 条结果`}
-                </div>
-              </div>
-
-              {/* 批量操作区域 */}
-              <div className="flex justify-between items-center mb-4">
-                <div className="flex items-center">
-                  {selectedItems.length > 0 && (
-                    <button
-                      onClick={() => setShowDeleteConfirm(true)}
-                      className="flex items-center px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed"
-                      disabled={isDeleting}
-                    >
-                      <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                      </svg>
-                      {isDeleting ? "删除中..." : `批量删除(${selectedItems.length})`}
-                    </button>
-                  )}
-                </div>
-                <div className="text-sm text-gray-500">
-                  {selectedItems.length > 0
-                    ? `已选择 ${selectedItems.length} 项`
-                    : "可选择多项进行批量操作"}
-                </div>
-              </div>
-
-              {/* 训练数据表格 */}
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-8">
-                        <input
-                          type="checkbox"
-                          checked={isAllSelectedOnCurrentPage}
-                          onChange={(e) => handleSelectAllOnPage(e.target.checked)}
-                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                          disabled={currentItems.length === 0}
-                        />
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-24">
-                        操作
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        问题
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-96">
-                        内容
-                      </th>
-                      {/* <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-96">
-                        答案
-                      </th> */}
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-40">
-                        训练数据类型
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {isLoading ? (
+                {/* 训练数据表格 */}
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
                       <tr>
-                        <td colSpan={6} className="px-6 py-4 text-center text-gray-500">
-                          正在加载...
-                        </td>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-8">
+                          <input
+                            type="checkbox"
+                            checked={isAllSelectedOnCurrentPage}
+                            onChange={(e) => handleSelectAllOnPage(e.target.checked)}
+                            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                            disabled={currentItems.length === 0}
+                          />
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-24">
+                          操作
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          问题
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-96">
+                          内容
+                        </th>
+                        {/* <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-96">
+                          答案
+                        </th> */}
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-40">
+                          训练数据类型
+                        </th>
                       </tr>
-                    ) : currentItems.length === 0 ? (
-                      <tr>
-                        <td colSpan={6} className="px-6 py-4 text-center text-gray-500">
-                          暂无训练数据
-                        </td>
-                      </tr>
-                    ) : (
-                      currentItems.map((item) => (
-                        <tr key={item.id} className={selectedItems.includes(item.id) ? "bg-blue-50" : ""}>
-                          <td className="px-4 py-4 whitespace-nowrap">
-                            <input
-                              type="checkbox"
-                              checked={selectedItems.includes(item.id)}
-                              onChange={() => handleSelectItem(item.id)}
-                              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                            />
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation(); // 阻止事件冒泡
-                                console.log('删除按钮被点击，ID:', item.id);
-                                handleDelete(item.id, item.trainingDataType);
-                              }}
-                              className="text-red-500 border border-red-300 rounded px-4 py-2 text-sm hover:bg-red-50"
-                            >
-                              删除
-                            </button>
-                          </td>
-                          <td className="px-6 py-4">
-                            <div 
-                              className={`${expandedQuestion === item.id ? '' : 'max-w-xs truncate cursor-pointer'}`}
-                              onClick={() => toggleQuestionExpand(item.id)}
-                              title={expandedQuestion === item.id ? "" : "点击查看完整问题"}
-                            >
-                              {item.question}
-                            </div>
-                            {expandedQuestion === item.id && item.question && (
-                              <button 
-                                className="text-xs text-blue-500 mt-1 hover:text-blue-700"
-                                onClick={() => setExpandedQuestion(null)}
-                              >
-                                收起
-                              </button>
-                            )}
-                          </td>
-                          <td className="px-6 py-4">
-                            <div 
-                              className={`${expandedContent === item.id ? '' : 'max-w-xs truncate cursor-pointer'}`}
-                              onClick={() => toggleContentExpand(item.id)}
-                              title={expandedContent === item.id ? "" : "点击查看完整内容"}
-                            >
-                              {item.trainingDataType === "sql" ? item.sql : 
-                               item.trainingDataType === "ddl" ? item.ddl :
-                               item.trainingDataType === "documentation" ? item.documentation :
-                               item.trainingDataType === "solution" ? (
-                                 typeof item.solution === 'string' && item.solution.trim().startsWith('{') 
-                                   ? (() => {
-                                       return item.solution || item.content || "";
-
-                                     })()
-                                   : item.solution || item.content || ""
-                               ) :
-                               item.content}
-                            </div>
-                            {expandedContent === item.id && (
-                              <button 
-                                className="text-xs text-blue-500 mt-1 hover:text-blue-700"
-                                onClick={() => setExpandedContent(null)}
-                              >
-                                收起
-                              </button>
-                            )}
-                          </td>
-                          <td className="px-6 py-4">
-                            <div 
-                              className={`${expandedAnswer === item.id ? '' : 'max-w-xs truncate cursor-pointer'}`}
-                              onClick={() => toggleAnswerExpand(item.id)}
-                              title={expandedAnswer === item.id ? "" : "点击查看完整答案"}
-                            >
-                              {item.answer || ""}
-                            </div>
-                            {expandedAnswer === item.id && item.answer && (
-                              <button 
-                                className="text-xs text-blue-500 mt-1 hover:text-blue-700"
-                                onClick={() => setExpandedAnswer(null)}
-                              >
-                                收起
-                              </button>
-                            )}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            {(() => {
-                              // 标准化显示类型
-                              const displayType = (() => {
-                                const type = item.trainingDataType.toLowerCase();
-                                if (type === "documentation" || type === "doc" || type === "文档" || type.includes("document") || type.includes("文档")) {
-                                  return "文档";
-                                } else if (type === "sql") {
-                                  return "SQL";
-                                } else if (type === "ddl") {
-                                  return "DDL";
-                                } else if (type === "solution") {
-                                  return "解题步骤";
-                                } else {
-                                  return item.trainingDataType;
-                                }
-                              })();
-                              
-                              return displayType;
-                            })()}
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {isLoading ? (
+                        <tr>
+                          <td colSpan={6} className="px-6 py-4 text-center text-gray-500">
+                            正在加载...
                           </td>
                         </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
+                      ) : currentItems.length === 0 ? (
+                        <tr>
+                          <td colSpan={6} className="px-6 py-4 text-center text-gray-500">
+                            暂无训练数据
+                          </td>
+                        </tr>
+                      ) : (
+                        currentItems.map((item) => (
+                          <tr key={item.id} className={selectedItems.includes(item.id) ? "bg-blue-50" : ""}>
+                            <td className="px-4 py-4 whitespace-nowrap">
+                              <input
+                                type="checkbox"
+                                checked={selectedItems.includes(item.id)}
+                                onChange={() => handleSelectItem(item.id)}
+                                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                              />
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation(); // 阻止事件冒泡
+                                  console.log('删除按钮被点击，ID:', item.id);
+                                  handleDelete(item.id, item.trainingDataType);
+                                }}
+                                className="text-red-500 border border-red-300 rounded px-4 py-2 text-sm hover:bg-red-50"
+                              >
+                                删除
+                              </button>
+                            </td>
+                            <td className="px-6 py-4">
+                              <div 
+                                className={`${expandedQuestion === item.id ? '' : 'max-w-xs truncate cursor-pointer'}`}
+                                onClick={() => toggleQuestionExpand(item.id)}
+                                title={expandedQuestion === item.id ? "" : "点击查看完整问题"}
+                              >
+                                {item.question}
+                              </div>
+                              {expandedQuestion === item.id && item.question && (
+                                <button 
+                                  className="text-xs text-blue-500 mt-1 hover:text-blue-700"
+                                  onClick={() => setExpandedQuestion(null)}
+                                >
+                                  收起
+                                </button>
+                              )}
+                            </td>
+                            <td className="px-6 py-4">
+                              <div 
+                                className={`${expandedContent === item.id ? '' : 'max-w-xs truncate cursor-pointer'}`}
+                                onClick={() => toggleContentExpand(item.id)}
+                                title={expandedContent === item.id ? "" : "点击查看完整内容"}
+                              >
+                                {item.trainingDataType === "sql" ? item.sql : 
+                                 item.trainingDataType === "ddl" ? item.ddl :
+                                 item.trainingDataType === "documentation" ? item.documentation :
+                                 item.trainingDataType === "solution" ? (
+                                   typeof item.solution === 'string' && item.solution.trim().startsWith('{') 
+                                     ? (() => {
+                                         return item.solution || item.content || "";
 
-              {/* 分页控制 */}
-              {!isLoading && totalPages > 0 && (
-                <div className="flex items-center justify-between border-t border-gray-200 px-4 py-3 sm:px-6 mt-4">
-                  <div className="flex items-center space-x-4">
-                    <div className="text-sm text-gray-700">
-                      显示: <span className="font-medium">{startIndex + 1}</span> - <span className="font-medium">{endIndex}</span> 共 <span className="font-medium">{totalFilteredItems}</span> 条
+                                       })()
+                                     : item.solution || item.content || ""
+                                 ) :
+                                 item.content}
+                              </div>
+                              {expandedContent === item.id && (
+                                <button 
+                                  className="text-xs text-blue-500 mt-1 hover:text-blue-700"
+                                  onClick={() => setExpandedContent(null)}
+                                >
+                                  收起
+                                </button>
+                              )}
+                            </td>
+                            <td className="px-6 py-4">
+                              <div 
+                                className={`${expandedAnswer === item.id ? '' : 'max-w-xs truncate cursor-pointer'}`}
+                                onClick={() => toggleAnswerExpand(item.id)}
+                                title={expandedAnswer === item.id ? "" : "点击查看完整答案"}
+                              >
+                                {item.answer || ""}
+                              </div>
+                              {expandedAnswer === item.id && item.answer && (
+                                <button 
+                                  className="text-xs text-blue-500 mt-1 hover:text-blue-700"
+                                  onClick={() => setExpandedAnswer(null)}
+                                >
+                                  收起
+                                </button>
+                              )}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              {(() => {
+                                // 标准化显示类型
+                                const displayType = (() => {
+                                  const type = item.trainingDataType.toLowerCase();
+                                  if (type === "documentation" || type === "doc" || type === "文档" || type.includes("document") || type.includes("文档")) {
+                                    return "文档";
+                                  } else if (type === "sql") {
+                                    return "SQL";
+                                  } else if (type === "ddl") {
+                                    return "DDL";
+                                  } else if (type === "solution") {
+                                    return "解题步骤";
+                                  } else {
+                                    return item.trainingDataType;
+                                  }
+                                })();
+                                
+                                return displayType;
+                              })()}
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* 分页控制 */}
+                {!isLoading && totalPages > 0 && (
+                  <div className="flex items-center justify-between border-t border-gray-200 px-4 py-3 sm:px-6 mt-4">
+                    <div className="flex items-center space-x-4">
+                      <div className="text-sm text-gray-700">
+                        显示: <span className="font-medium">{startIndex + 1}</span> - <span className="font-medium">{endIndex}</span> 共 <span className="font-medium">{totalFilteredItems}</span> 条
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <span className="text-sm text-gray-700">每页显示:</span>
+                        <select
+                          value={itemsPerPage}
+                          onChange={(e) => handleItemsPerPageChange(Number(e.target.value))}
+                          className="block w-20 rounded-md border-gray-300 py-1.5 pl-3 pr-10 text-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
+                        >
+                          <option value={5}>5条</option>
+                          <option value={10}>10条</option>
+                          <option value={20}>20条</option>
+                          <option value={50}>50条</option>
+                          <option value={100}>100条</option>
+                        </select>
+                      </div>
                     </div>
                     <div className="flex items-center space-x-2">
-                      <span className="text-sm text-gray-700">每页显示:</span>
-                      <select
-                        value={itemsPerPage}
-                        onChange={(e) => handleItemsPerPageChange(Number(e.target.value))}
-                        className="block w-20 rounded-md border-gray-300 py-1.5 pl-3 pr-10 text-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
+                      <button
+                        onClick={() => setCurrentPage(1)}
+                        disabled={currentPage === 1}
+                        className="relative inline-flex items-center px-3 py-2 text-sm font-medium rounded-md text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                        <option value={5}>5条</option>
-                        <option value={10}>10条</option>
-                        <option value={20}>20条</option>
-                        <option value={50}>50条</option>
-                        <option value={100}>100条</option>
-                      </select>
+                        首页
+                      </button>
+                      <button
+                        onClick={() => setCurrentPage(currentPage - 1)}
+                        disabled={currentPage === 1}
+                        className="relative inline-flex items-center px-3 py-2 text-sm font-medium rounded-md text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        上一页
+                      </button>
+                      <span className="text-gray-700 px-2">
+                        第 {currentPage} 页，共 {totalPages} 页
+                      </span>
+                      <button
+                        onClick={() => setCurrentPage(currentPage + 1)}
+                        disabled={currentPage === totalPages}
+                        className="relative inline-flex items-center px-3 py-2 text-sm font-medium rounded-md text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        下一页
+                      </button>
+                      <button
+                        onClick={() => setCurrentPage(totalPages)}
+                        disabled={currentPage === totalPages}
+                        className="relative inline-flex items-center px-3 py-2 text-sm font-medium rounded-md text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        末页
+                      </button>
                     </div>
                   </div>
-                  <div className="flex items-center space-x-2">
-                    <button
-                      onClick={() => setCurrentPage(1)}
-                      disabled={currentPage === 1}
-                      className="relative inline-flex items-center px-3 py-2 text-sm font-medium rounded-md text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      首页
-                    </button>
-                    <button
-                      onClick={() => setCurrentPage(currentPage - 1)}
-                      disabled={currentPage === 1}
-                      className="relative inline-flex items-center px-3 py-2 text-sm font-medium rounded-md text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      上一页
-                    </button>
-                    <span className="text-gray-700 px-2">
-                      第 {currentPage} 页，共 {totalPages} 页
-                    </span>
-                    <button
-                      onClick={() => setCurrentPage(currentPage + 1)}
-                      disabled={currentPage === totalPages}
-                      className="relative inline-flex items-center px-3 py-2 text-sm font-medium rounded-md text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      下一页
-                    </button>
-                    <button
-                      onClick={() => setCurrentPage(totalPages)}
-                      disabled={currentPage === totalPages}
-                      className="relative inline-flex items-center px-3 py-2 text-sm font-medium rounded-md text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      末页
-                    </button>
-                  </div>
-                </div>
-              )}
+                )}
+              </div>
             </div>
-          </div>
+          )}
         </main>
       </div>
 

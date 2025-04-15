@@ -84,6 +84,27 @@ export interface SqlRetryResponse {
   };
 }
 
+interface SqlReviewRequest {
+  question: string;
+  sql: string;
+  result: any;
+  explanation?: string;
+}
+
+interface SqlReview {
+  id: string;
+  question: string;
+  sql: string;
+  result: any;
+  explanation?: string;
+  timestamp: string;
+  status: 'pending' | 'approved' | 'rejected';
+}
+
+interface SqlReviewsResponse {
+  reviews: SqlReview[];
+}
+
 // API服务类
 class ApiService {
   // 生成问题建议
@@ -237,6 +258,24 @@ class ApiService {
       error_info: errorInfo
     });
     return response.data as SqlRetryResponse;
+  }
+
+  // 提交 SQL 审核
+  async submitSqlForReview(data: SqlReviewRequest): Promise<void> {
+    await axios.post(`${API_BASE_URL}/sql/review/submit`, data);
+  }
+
+  // 获取待审核的 SQL
+  async getPendingSqlReviews(): Promise<SqlReviewsResponse> {
+    const response = await axios.get(`${API_BASE_URL}/sql/review/pending`);
+    return response.data as SqlReviewsResponse;
+  }
+
+  // 审核 SQL
+  async reviewSql(id: string, approved: boolean): Promise<void> {
+    await axios.post(`${API_BASE_URL}/sql/review/${id}`, {
+      approved
+    });
   }
 }
 
